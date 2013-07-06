@@ -3,7 +3,7 @@ module Agent (Agent,
               makeAgent,
               writeAgent,
               readAgent,
-              killAgentSync,
+              killAgent,
               connectAgents,
               select)
        where
@@ -18,15 +18,14 @@ import Control.Exception
 
 data Agent = Agent { agentRead :: TChan String
                    , agentWrite :: TChan String
-                   , agentClose :: (TMVar (), TMVar ()) }
+                   , agentClose :: TMVar () }
 
 makeAgent hIn hOut = do readChan <- newTChanIO
                         writeChan <- newTChanIO
-                        done1 <- newEmptyTMVarIO
-                        done2 <- newEmptyTMVarIO
+                        done <- newEmptyTMVarIO
 
                         let safely m = m `catch` \(e :: SomeException) ->
-                              atomically $ putTMVar done1 ()
+                              atomically $ putTMVar done ()
 
                         readTid <- forkIO . safely . forever $ do
                           msg <- hGetChar hOut
@@ -37,16 +36,15 @@ makeAgent hIn hOut = do readChan <- newTChanIO
                           hPutStr hIn msg
                           hFlush hIn
 
-                        forkIO $ forever $ do atomically $ takeTMVar done1
+                        forkIO $ forever $ do atomically $ takeTMVar done
                                               killThread readTid
                                               killThread writeTid
-                                              atomically $ putTMVar done2 ()
 
-                        return $ Agent readChan writeChan (done1, done2)
+                        return $ Agent readChan writeChan done
 
 writeAgent (Agent _ x _) = atomically . writeTChan x
 readAgent (Agent x _ _) = atomically $ readTChan x
-killAgentSync (Agent _ _ (d1, d2)) = atomically (putTMVar d1 ()) >> atomically (takeTMVar d2)
+killAgent (Agent _ _ done) = atomically (putTMVar done ())
 
 connectAgents ag1 ag2 = do disc <- newEmptyMVar
                            let disconnect = \(e :: SomeException) -> putMVar disc ()
@@ -59,11 +57,9 @@ connectAgents ag1 ag2 = do disc <- newEmptyMVar
                                        killThread tid1
                                        killThread tid2
 
--- waitForAgent (Agent _ _ (_, d)) = modifyMVar_ d return
-
 waitTMVar v = takeTMVar v >>= putTMVar v
 
 select :: [(Agent, IO ())] -> STM (IO ())
 select pairs = foldr1 orElse actions
   where actions = map toStm pairs
-        toStm (Agent _ _ (_, done), io) = waitTMVar done >> return io
+        toStm (Agent _ _ done, io) = waitTMVar done >> return io

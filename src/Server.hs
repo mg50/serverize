@@ -33,9 +33,8 @@ spawnProcess sock = do
   liftIO $ do (hIn, hOut, _, process) <- runInteractiveCommand cmd
               agent <- makeAgent hIn hOut
               forkIO $ do waitForProcess process
-                          killAgentSync agent
+                          killAgent agent
               return agent
-
 
 serveM :: ServerM ()
 serveM = do
@@ -48,7 +47,7 @@ serveM = do
                        connectAgents processAgent clientAgent
                        join . atomically $ select [(clientAgent, go),
                                                    (processAgent, sClose sock)]
-           in go -- `catch` \(e :: SomeException) -> print "asdf" >> go
+           in go
 
 serve :: ServerConfig  -> IO ()
 serve conf = runReaderT serveM conf
