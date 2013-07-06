@@ -11,6 +11,7 @@ import Control.Monad.Trans.Reader
 import Control.Exception
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Concurrent
 
 data ServerConfig = ServerConfig { port :: Int
                                  , command :: String }
@@ -30,11 +31,9 @@ spawnProcess :: Socket -> ServerM Agent
 spawnProcess sock = do
   cmd <- asks command
   liftIO $ do (hIn, hOut, _, process) <- runInteractiveCommand cmd
-              -- hSetBinaryMode hIn False
-              -- hSetBinaryMode hOut False
               agent <- makeAgent hIn hOut
-              -- forkIO $ do waitForProcess process
-              --             killAgentSync agent
+              forkIO $ do waitForProcess process
+                          killAgentSync agent
               return agent
 
 

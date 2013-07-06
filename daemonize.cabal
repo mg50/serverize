@@ -20,3 +20,4 @@ executable daemonize
   build-depends:       base ==4.5.*, stm, network, process, transformers, mtl
   hs-source-dirs:      src
   main-is:             Main.hs
+  ghc-options:         -O2 -threaded -with-rtsopts "-N"
