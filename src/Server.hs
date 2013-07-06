@@ -44,8 +44,8 @@ serveM = do
                        (h, _, _) <- accept sock
                        putStrLn "socket accepted"
                        clientAgent <- makeAgent h h
-                       connectAgents processAgent clientAgent
-                       join . atomically $ select [(clientAgent, go),
+                       conn <- connectAgents processAgent clientAgent
+                       join . atomically $ select [(clientAgent, killAgentConnection conn >> go),
                                                    (processAgent, sClose sock)]
            in go
 

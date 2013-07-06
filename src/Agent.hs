@@ -5,12 +5,14 @@ module Agent (Agent,
               readAgent,
               killAgent,
               connectAgents,
+              killAgentConnection,
               select)
        where
 import Prelude hiding (catch)
 import System.IO
 import Control.Monad
 import Control.Concurrent
+import Control.Concurrent.MVar
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TChan
 import Control.Concurrent.STM.TMVar
@@ -19,6 +21,8 @@ import Control.Exception
 data Agent = Agent { agentRead :: TChan String
                    , agentWrite :: TChan String
                    , agentClose :: TMVar () }
+
+data AgentConnection = AgentConnection (MVar ()) (MVar ())
 
 makeAgent hIn hOut = do readChan <- newTChanIO
                         writeChan <- newTChanIO
@@ -47,6 +51,7 @@ readAgent (Agent x _ _) = atomically $ readTChan x
 killAgent (Agent _ _ done) = atomically (putTMVar done ())
 
 connectAgents ag1 ag2 = do disc <- newEmptyMVar
+                           finishedDisc <- newEmptyMVar
                            let disconnect = \(e :: SomeException) -> putMVar disc ()
                            let wire x y = forever $ do msg <- readAgent x
                                                        writeAgent y msg
@@ -56,6 +61,10 @@ connectAgents ag1 ag2 = do disc <- newEmptyMVar
                            forkIO $ do takeMVar disc
                                        killThread tid1
                                        killThread tid2
+                                       putMVar finishedDisc ()
+                           return $ AgentConnection disc finishedDisc
+
+killAgentConnection (AgentConnection kill done) = putMVar kill () >> takeMVar done
 
 waitTMVar v = takeTMVar v >>= putTMVar v
 
