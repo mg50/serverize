@@ -36,9 +36,9 @@ makeAgent hIn hOut = do readChan <- newTChanIO
                           hPutStr hIn msg
                           hFlush hIn
 
-                        forkIO $ forever $ do atomically $ takeTMVar done
-                                              killThread readTid
-                                              killThread writeTid
+                        forkIO $ do atomically $ takeTMVar done
+                                    killThread readTid
+                                    killThread writeTid
 
                         return $ Agent readChan writeChan done
 
