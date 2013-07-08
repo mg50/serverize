@@ -4,12 +4,13 @@ import Network.Socket (withSocketsDo)
 import Server
 import Client
 
-defaultPort = 3344
+defaultPort = 2002
+defaultNumConnections = 2
 
 main = withSocketsDo $ do
   args <- getArgs
   case args of
-    cmd:_ -> let conf = ServerConfig defaultPort cmd
+    cmd:_ -> let conf = ServerConfig defaultPort cmd defaultNumConnections
              in serve conf
     [] -> let conf = ClientConfig defaultPort
           in clientConnect conf

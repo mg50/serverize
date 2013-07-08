@@ -3,7 +3,6 @@ import Network
 import System.IO
 import Agent
 import Control.Monad
-import Control.Concurrent.STM
 
 data ClientConfig = ClientConfig { port :: Int }
 
@@ -12,5 +11,5 @@ clientConnect conf = do
   serverAgent <- makeAgent h h
   clientAgent <- makeAgent stdout stdin
   connectAgents clientAgent serverAgent
-  join . atomically $ select [(clientAgent, return ()),
-                              (serverAgent, putStrLn "server stopped responding; exiting")]
+  select [(clientAgent, return ()),
+          (serverAgent, putStrLn "server stopped responding; exiting")]

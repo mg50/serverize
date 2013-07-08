@@ -4,6 +4,7 @@ module Agent (Agent,
               writeAgent,
               readAgent,
               killAgent,
+              readAgentBuffer,
               connectAgents,
               killAgentConnection,
               select)
@@ -20,20 +21,27 @@ import Control.Exception
 
 data Agent = Agent { agentRead :: TChan String
                    , agentWrite :: TChan String
-                   , agentClose :: TMVar () }
+                   , agentClose :: TMVar ()
+                   , agentBuffer :: TVar String }
 
 data AgentConnection = AgentConnection (MVar ()) (MVar ())
 
+makeAgent :: Handle -> Handle -> IO Agent
 makeAgent hIn hOut = do readChan <- newTChanIO
                         writeChan <- newTChanIO
                         done <- newEmptyTMVarIO
+                        buf <- newTVarIO ""
 
                         let safely m = m `catch` \(e :: SomeException) ->
                               atomically $ putTMVar done ()
 
                         readTid <- forkIO . safely . forever $ do
-                          msg <- hGetChar hOut
-                          atomically $ writeTChan readChan [msg]
+                          c <- hGetChar hOut
+                          atomically $ do writeTChan readChan [c]
+                                          bufferedMsg <- readTVar buf
+                                          case bufferedMsg of
+                                            h:_ | h == '\n' -> writeTVar buf [c]
+                                            _ -> modifyTVar buf (c:)
 
                         writeTid <- forkIO . safely . forever $ do
                           msg <- atomically $ readTChan writeChan
@@ -44,11 +52,12 @@ makeAgent hIn hOut = do readChan <- newTChanIO
                                     killThread readTid
                                     killThread writeTid
 
-                        return $ Agent readChan writeChan done
+                        return $ Agent readChan writeChan done buf
 
-writeAgent (Agent _ x _) = atomically . writeTChan x
-readAgent (Agent x _ _) = atomically $ readTChan x
-killAgent (Agent _ _ done) = atomically (putTMVar done ())
+writeAgent (Agent _ x _ _) = atomically . writeTChan x
+readAgent (Agent x _ _ _) = atomically $ readTChan x
+killAgent (Agent _ _ done _) = atomically (putTMVar done ())
+readAgentBuffer agent = liftM reverse $ atomically $ readTVar (agentBuffer agent)
 
 connectAgents ag1 ag2 = do disc <- newEmptyMVar
                            finishedDisc <- newEmptyMVar
@@ -68,7 +77,7 @@ killAgentConnection (AgentConnection kill done) = putMVar kill () >> takeMVar do
 
 waitTMVar v = takeTMVar v >>= putTMVar v
 
-select :: [(Agent, IO ())] -> STM (IO ())
-select pairs = foldr1 orElse actions
+select :: [(Agent, IO ())] -> IO ()
+select pairs = join . atomically $ foldr1 orElse actions
   where actions = map toStm pairs
-        toStm (Agent _ _ done, io) = waitTMVar done >> return io
+        toStm (Agent _ _ done _, io) = waitTMVar done >> return io

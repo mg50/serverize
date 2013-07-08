@@ -9,22 +9,23 @@ import System.IO
 import Control.Monad.Trans
 import Control.Monad.Trans.Reader
 import Control.Exception
-import Control.Concurrent.STM
 import Control.Monad
 import Control.Concurrent
 
 data ServerConfig = ServerConfig { port :: Int
-                                 , command :: String }
+                                 , command :: String
+                                 , numConnections :: Int}
 
 type ServerM = ReaderT ServerConfig IO
 
 newSocket :: ServerM Socket
 newSocket = do
   port <- asks port
+  numConnections <- asks numConnections
   liftIO $ do sock <- socket AF_INET Stream 0
               setSocketOption sock ReuseAddr 1
               bindSocket sock (SockAddrInet (fromIntegral port) iNADDR_ANY)
-              listen sock 2
+              listen sock numConnections
               return sock
 
 spawnProcess :: Socket -> ServerM Agent
@@ -40,14 +41,17 @@ serveM :: ServerM ()
 serveM = do
   sock <- newSocket
   processAgent <- spawnProcess sock
-  liftIO $ let go = do putStrLn "waiting for connection"
-                       (h, _, _) <- accept sock
-                       putStrLn "socket accepted"
-                       clientAgent <- makeAgent h h
-                       conn <- connectAgents processAgent clientAgent
-                       join . atomically $ select [(clientAgent, killAgentConnection conn >> go),
-                                                   (processAgent, sClose sock)]
-           in go
+  liftIO $ let go isFirstConn = do
+                 putStrLn "waiting for connection"
+                 (h, _, _) <- accept sock
+                 putStrLn "socket accepted"
+                 bufferedMessage <- readAgentBuffer processAgent
+                 clientAgent <- makeAgent h h
+                 unless isFirstConn $ writeAgent clientAgent bufferedMessage
+                 conn <- connectAgents processAgent clientAgent
+                 select [(clientAgent, killAgentConnection conn >> go False),
+                         (processAgent, sClose sock)]
+           in go True
 
 serve :: ServerConfig  -> IO ()
 serve conf = runReaderT serveM conf
