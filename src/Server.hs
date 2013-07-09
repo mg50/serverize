@@ -41,17 +41,17 @@ serveM :: ServerM ()
 serveM = do
   sock <- newSocket
   processAgent <- spawnProcess sock
-  liftIO $ let go isFirstConn = do
+  liftIO $ let go = do
                  putStrLn "waiting for connection"
                  (h, _, _) <- accept sock
                  putStrLn "socket accepted"
-                 bufferedMessage <- readAgentBuffer processAgent
                  clientAgent <- makeAgent h h
-                 unless isFirstConn $ writeAgent clientAgent bufferedMessage
+                 bufferedMessage <- readAgentBuffer processAgent
+                 maybe (return ()) (writeAgent clientAgent) bufferedMessage
                  conn <- connectAgents processAgent clientAgent
-                 select [(clientAgent, killAgentConnection conn >> go False),
+                 select [(clientAgent, killAgentConnection conn >> go),
                          (processAgent, sClose sock)]
-           in go True
+           in go
 
 serve :: ServerConfig  -> IO ()
 serve conf = runReaderT serveM conf

@@ -57,7 +57,12 @@ makeAgent hIn hOut = do readChan <- newTChanIO
 writeAgent (Agent _ x _ _) = atomically . writeTChan x
 readAgent (Agent x _ _ _) = atomically $ readTChan x
 killAgent (Agent _ _ done _) = atomically (putTMVar done ())
-readAgentBuffer agent = liftM reverse $ atomically $ readTVar (agentBuffer agent)
+readAgentBuffer agent = atomically $ do
+  empty <- isEmptyTChan (agentRead agent)
+  if empty
+     then do msg <- readTVar (agentBuffer agent)
+             return $ Just (reverse msg)
+     else return Nothing
 
 connectAgents ag1 ag2 = do disc <- newEmptyMVar
                            finishedDisc <- newEmptyMVar
